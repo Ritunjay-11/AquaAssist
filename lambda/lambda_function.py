@@ -8,8 +8,6 @@
 import logging
 import ask_sdk_core.utils as ask_utils
 import json
-import re
-from datetime import datetime
 from ask_sdk_core.skill_builder import SkillBuilder
 from ask_sdk_core.dispatch_components import AbstractRequestHandler
 from ask_sdk_core.dispatch_components import AbstractExceptionHandler
@@ -21,8 +19,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Load the dataset from the JSON file
-with open('./documents/water_data.json', 'r') as f:
-    dataset = json.load(f)
+try:
+    with open('./documents/water_data.json', 'r') as f:
+        dataset = json.load(f)
+    logger.info("Dataset loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading dataset: {e}")
 
 # Map user-friendly site names to keys in the dataset
 site_map = {
@@ -41,7 +43,7 @@ class LaunchRequestHandler(AbstractRequestHandler):
 
     def handle(self, handler_input):
         # type: (HandlerInput) -> Response
-        speak_output = "Welcome to AquaAssist. Would you like to get water consumption data?"
+        speak_output = "Welcome to AquaAssist. How can I help you?"
 
         return (
             handler_input.response_builder
@@ -49,28 +51,6 @@ class LaunchRequestHandler(AbstractRequestHandler):
                 .ask(speak_output)
                 .response
         )
-
-
-class PlayGameHandler(AbstractRequestHandler):
-    """Handler for Yes Intent."""
-    def can_handle(self, handler_input):
-        # type: (HandlerInput) -> bool
-        return (
-            ask_utils.is_request_type("IntentRequest")(handler_input)
-            and ask_utils.is_intent_name("AMAZON.YesIntent")(handler_input)
-        )
-
-    def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
-        speak_output = "Please provide the site for which you need the average water consumption data."
-
-        return (
-            handler_input.response_builder
-                .speak(speak_output)
-                .ask(speak_output)
-                .response
-        )
-
 
 class GetAverageConsumptionIntentHandler(AbstractRequestHandler):
     """Handler for getting average water consumption data."""
@@ -83,34 +63,39 @@ class GetAverageConsumptionIntentHandler(AbstractRequestHandler):
 
     def handle(self, handler_input):
         # type: (HandlerInput) -> Response
-        slots = handler_input.request_envelope.request.intent.slots
-        site = slots["site"].value.lower()
+        try:
+            slots = handler_input.request_envelope.request.intent.slots
+            site = slots["site"].value.lower()
+            logger.info(f"Site requested: {site}")
 
-        # Map the user-friendly site name to the actual dataset key
-        site_key = site_map.get(site)
-        if not site_key:
-            speak_output = f"I couldn't find the site {site}. Please provide a valid site."
-            return (
-                handler_input.response_builder
-                    .speak(speak_output)
-                    .ask(speak_output)
-                    .response
-            )
+            # Map the user-friendly site name to the actual dataset key
+            site_key = site_map.get(site)
+            if not site_key:
+                speak_output = f"I couldn't find the site {site}. Please provide a valid site."
+                return (
+                    handler_input.response_builder
+                        .speak(speak_output)
+                        .ask(speak_output)
+                        .response
+                )
 
-        # Calculate the average consumption for the specified site
-        total_consumption = 0
-        count = 0
-        for record in dataset:
-            consumption = record.get(site_key)
-            if consumption is not None:
-                total_consumption += consumption
-                count += 1
+            # Calculate the average consumption for the specified site
+            total_consumption = 0
+            count = 0
+            for record in dataset:
+                consumption = record.get(site_key)
+                if consumption is not None:
+                    total_consumption += consumption
+                    count += 1
 
-        if count > 0:
-            average_consumption = total_consumption / count
-            speak_output = f"The average water consumption for {site} is {average_consumption:.2f} units."
-        else:
-            speak_output = f"No data found for {site}."
+            if count > 0:
+                average_consumption = total_consumption / count
+                speak_output = f"The average water consumption for {site} is {average_consumption:.2f} units."
+            else:
+                speak_output = f"No data found for {site}."
+        except Exception as e:
+            logger.error(f"Error in GetAverageConsumptionIntentHandler: {e}")
+            speak_output = "Sorry, I had trouble processing your request. Please try again."
 
         return (
             handler_input.response_builder
@@ -118,16 +103,46 @@ class GetAverageConsumptionIntentHandler(AbstractRequestHandler):
                 .response
         )
 
-
-class HelloWorldIntentHandler(AbstractRequestHandler):
-    """Handler for Hello World Intent."""
+class GetTotalConsumptionIntentHandler(AbstractRequestHandler):
+    """Handler for getting total water consumption data."""
     def can_handle(self, handler_input):
         # type: (HandlerInput) -> bool
-        return ask_utils.is_intent_name("HelloWorldIntent")(handler_input)
+        return (
+            ask_utils.is_request_type("IntentRequest")(handler_input)
+            and ask_utils.is_intent_name("GetTotalConsumptionIntentHandler")(handler_input)
+        )
 
     def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
-        speak_output = "Hello World!"
+        try:
+            slots = handler_input.request_envelope.request.intent.slots
+            site = slots["site"].value.lower()
+            logger.info(f"Site requested: {site}")
+
+            # Map the user-friendly site name to the actual dataset key
+            site_key = site_map.get(site)
+            if not site_key:
+                speak_output = f"I couldn't find the site {site}. Please provide a valid site."
+                return (
+                    handler_input.response_builder
+                        .speak(speak_output)
+                        .ask(speak_output)
+                        .response
+                )
+
+            # Calculate the total consumption for the specified site
+            total_consumption = 0
+            for record in dataset:
+                consumption = record.get(site_key)
+                if consumption is not None:
+                    total_consumption += consumption
+
+            if total_consumption > 0:
+                speak_output = f"The total water consumption for {site} is {total_consumption:.2f} units."
+            else:
+                speak_output = f"No data found for {site}."
+        except Exception as e:
+            logger.error(f"Error in GetTotalConsumptionIntentHandler: {e}")
+            speak_output = "Sorry, I had trouble processing your request. Please try again."
 
         return (
             handler_input.response_builder
@@ -143,8 +158,7 @@ class HelpIntentHandler(AbstractRequestHandler):
         return ask_utils.is_intent_name("AMAZON.HelpIntent")(handler_input)
 
     def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
-        speak_output = "You can ask me for water consumption data by providing a site. How can I help you?"
+        speak_output = "You can ask me for the average or total water consumption for a specific site. How can I help you?"
 
         return (
             handler_input.response_builder
@@ -152,7 +166,6 @@ class HelpIntentHandler(AbstractRequestHandler):
                 .ask(speak_output)
                 .response
         )
-
 
 class CancelOrStopIntentHandler(AbstractRequestHandler):
     """Single handler for Cancel and Stop Intent."""
@@ -164,7 +177,6 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
         )
 
     def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
         speak_output = "Goodbye!"
 
         return (
@@ -173,7 +185,6 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
                 .response
         )
 
-
 class FallbackIntentHandler(AbstractRequestHandler):
     """Single handler for Fallback Intent."""
     def can_handle(self, handler_input):
@@ -181,13 +192,11 @@ class FallbackIntentHandler(AbstractRequestHandler):
         return ask_utils.is_intent_name("AMAZON.FallbackIntent")(handler_input)
 
     def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
         logger.info("In FallbackIntentHandler")
         speech = "Hmm, I'm not sure. You can say Hello or Help. What would you like to do?"
         reprompt = "I didn't catch that. What can I help you with?"
 
         return handler_input.response_builder.speak(speech).ask(reprompt).response
-
 
 class SessionEndedRequestHandler(AbstractRequestHandler):
     """Handler for Session End."""
@@ -196,10 +205,8 @@ class SessionEndedRequestHandler(AbstractRequestHandler):
         return ask_utils.is_request_type("SessionEndedRequest")(handler_input)
 
     def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
         # Any cleanup logic goes here.
         return handler_input.response_builder.response
-
 
 class IntentReflectorHandler(AbstractRequestHandler):
     """The intent reflector is used for interaction model testing and debugging.
@@ -212,7 +219,6 @@ class IntentReflectorHandler(AbstractRequestHandler):
         return ask_utils.is_request_type("IntentRequest")(handler_input)
 
     def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
         intent_name = ask_utils.get_intent_name(handler_input)
         speak_output = "You just triggered " + intent_name + "."
 
@@ -221,7 +227,6 @@ class IntentReflectorHandler(AbstractRequestHandler):
                 .speak(speak_output)
                 .response
         )
-
 
 class CatchAllExceptionHandler(AbstractExceptionHandler):
     """Generic error handling to capture any syntax or routing errors. If you receive an error
@@ -233,7 +238,6 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
         return True
 
     def handle(self, handler_input, exception):
-        # type: (HandlerInput) -> Response
         logger.error(exception, exc_info=True)
 
         speak_output = "Sorry, I had trouble doing what you asked. Please try again."
@@ -245,7 +249,6 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
                 .response
         )
 
-
 # The SkillBuilder object acts as the entry point for your skill, routing all request and response
 # payloads to the handlers above. Make sure any new handlers or interceptors you've
 # defined are included below. The order matters - they're processed top to bottom.
@@ -253,13 +256,15 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
 sb = SkillBuilder()
 
 sb.add_request_handler(LaunchRequestHandler())
-sb.add_request_handler(PlayGameHandler())
 sb.add_request_handler(GetAverageConsumptionIntentHandler())
-sb.add_request_handler(HelloWorldIntentHandler())
+sb.add_request_handler(GetTotalConsumptionIntentHandler())
 sb.add_request_handler(HelpIntentHandler())
 sb.add_request_handler(CancelOrStopIntentHandler())
 sb.add_request_handler(FallbackIntentHandler())
 sb.add_request_handler(SessionEndedRequestHandler())
+sb.add_request_handler(IntentReflectorHandler())  # make sure IntentReflectorHandler is last so it doesn't override your custom intent handlers
+
 sb.add_exception_handler(CatchAllExceptionHandler())
-sb.add_request_handler(IntentReflectorHandler())
+
 lambda_handler = sb.lambda_handler()
+
